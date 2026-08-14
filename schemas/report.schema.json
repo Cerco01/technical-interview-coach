@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.interview-coach/schemas/report.schema.json",
+  "title": "Completed session report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session_id", "flow", "mode", "completion_reason", "timing", "coverage", "objective_summary", "subjective_summary", "competency_evidence", "strengths", "gaps", "readiness", "attempts", "audit"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "session_id": {"type": "string"},
+    "flow": {"enum": ["practice", "assessment"]},
+    "mode": {"enum": ["interview", "study", "review"]},
+    "completion_reason": {"enum": ["question_limit", "time_expired", "user_finished", "unrecoverable_state"]},
+    "timing": {"type": "object"},
+    "coverage": {"type": "object"},
+    "objective_summary": {"type": "object"},
+    "subjective_summary": {"type": "object"},
+    "competency_evidence": {"type": "array", "items": {"type": "object"}},
+    "strengths": {"type": "array", "items": {"type": "string"}},
+    "gaps": {"type": "array", "items": {"type": "string"}},
+    "readiness": {"type": "object"},
+    "attempts": {"type": "array", "items": {"type": "object"}},
+    "audit": {"type": "object"}
+  }
+}

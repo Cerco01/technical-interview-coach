@@ -1,0 +1,9 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://local.interview-coach/schemas/assessment.schema.json",
+  "title":"Final rubric assessment",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","question_id","score","max_score","criteria","summary","improvement","deterministic_status"],
+  "properties":{"schema_version":{"const":1},"question_id":{"type":"string"},"score":{"type":"integer","minimum":0,"maximum":10},"max_score":{"const":10},"criteria":{"type":"array","items":{"type":"object"}},"summary":{"type":"string"},"improvement":{"type":"string"},"deterministic_status":{"enum":["passed","failed","error","timeout","not_applicable"]}}
+}

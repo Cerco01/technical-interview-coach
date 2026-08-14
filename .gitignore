@@ -1,0 +1,51 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Python environments and tools
+.venv/
+venv/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+**/__pycache__/
+*.py[cod]
+
+# Coverage and packaging output
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.fleet/
+.settings/
+*.iml
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Live learner and assessment state
+state/
+sessions/
+submissions/
+evidence/
+reviews/
+learner.json
+active-session.json
+*.tmp
+
+# Local Gentle AI registry and cache
+.atl/

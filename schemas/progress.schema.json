@@ -1,0 +1,15 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://local.interview-coach/schemas/progress.schema.json",
+  "title":"Learner profile and topic progress",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","learner","preferences","topic_progress","updated_at"],
+  "properties":{
+    "schema_version":{"const":1},
+    "learner":{"type":"object","additionalProperties":false,"required":["id","display_name","created_at"],"properties":{"id":{"type":"string","pattern":"^[a-z0-9-]+$"},"display_name":{"type":"string","minLength":1},"created_at":{"type":"string","format":"date-time"}}},
+    "preferences":{"type":"object","additionalProperties":false,"required":["default_mode","session_minutes","target_difficulty"],"properties":{"default_mode":{"enum":["interview","study","review"]},"session_minutes":{"type":"integer","minimum":5,"maximum":180},"target_difficulty":{"enum":["beginner","intermediate","advanced"]}}},
+    "topic_progress":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["topic_id","status","mastery","attempts","correct","confidence","last_practiced","next_review"],"properties":{"topic_id":{"type":"string"},"status":{"enum":["not_started","learning","reviewing","mastered"]},"mastery":{"type":"number","minimum":0,"maximum":1},"attempts":{"type":"integer","minimum":0},"correct":{"type":"integer","minimum":0},"confidence":{"type":"integer","minimum":1,"maximum":5},"last_practiced":{"type":["string","null"],"format":"date-time"},"next_review":{"type":["string","null"],"format":"date"}}}},
+    "updated_at":{"type":"string","format":"date-time"}
+  }
+}

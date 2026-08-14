@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "technical-interview-coach"
+version = "0.2.0"
+description = "Portable deterministic technical interview practice and assessment"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Technical Interview Coach contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+data = ["numpy>=2.0,<3", "pandas>=2.2,<4"]
+test = ["build>=1.2,<2", "jsonschema>=4.23,<5", "numpy>=2.0,<3", "pandas>=2.2,<4"]
+
+[project.scripts]
+interview-coach = "interview_coach.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+interview_coach = ["private/*.json"]
+
+[tool.setuptools.data-files]
+"interview_coach_data/curriculum" = ["curriculum/topics.json"]
+"interview_coach_data/questions" = ["data/questions/*.jsonl"]
+"interview_coach_data/schemas" = ["schemas/*.schema.json"]
+"interview_coach_data/examples" = ["examples/*.json", "examples/*.jsonl"]

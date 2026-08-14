@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "learner": {"id":"sample-learner","display_name":"Sample Learner","created_at":"2026-08-13T12:00:00Z"},
+  "preferences": {"default_mode":"study","session_minutes":20,"target_difficulty":"intermediate"},
+  "topic_progress": [
+    {"topic_id":"python-functions","status":"learning","mastery":0.55,"attempts":4,"correct":2,"confidence":3,"last_practiced":"2026-08-12T17:00:00Z","next_review":"2026-08-15"},
+    {"topic_id":"sql-joins-aggregation","status":"reviewing","mastery":0.7,"attempts":5,"correct":4,"confidence":4,"last_practiced":"2026-08-10T17:00:00Z","next_review":"2026-08-14"},
+    {"topic_id":"pandas-indexing-filtering","status":"learning","mastery":0.4,"attempts":3,"correct":1,"confidence":2,"last_practiced":"2026-08-11T17:00:00Z","next_review":"2026-08-13"}
+  ],
+  "updated_at":"2026-08-13T12:00:00Z"
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.interview-coach/schemas/transition.schema.json",
+  "title": "Session transition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sequence", "at", "event", "from_phase", "to_phase", "details"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "sequence": {"type": "integer", "minimum": 0},
+    "at": {"type": "string", "format": "date-time"},
+    "event": {"type": "string", "minLength": 1},
+    "from_phase": {"type": "string", "minLength": 1},
+    "to_phase": {"type": "string", "minLength": 1},
+    "details": {"type": "object"}
+  }
+}

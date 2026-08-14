@@ -1,0 +1,19 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://local.interview-coach/schemas/evidence.schema.json",
+  "title":"Deterministic evaluation evidence",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","question_id","strategy","status","objective_checks","summary","rubric_constraints","learner_output","safety"],
+  "properties":{
+    "schema_version":{"const":1},
+    "question_id":{"type":"string"},
+    "strategy":{"enum":["executable","sql","dataframe","numeric"]},
+    "status":{"enum":["passed","failed","error","timeout"]},
+    "objective_checks":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","status","message"],"properties":{"id":{"type":"string"},"status":{"enum":["passed","failed","error","timeout"]},"message":{"type":"string"}}}},
+    "summary":{"type":"object","additionalProperties":false,"required":["passed","failed","error","timeout"],"properties":{"passed":{"type":"integer","minimum":0},"failed":{"type":"integer","minimum":0},"error":{"type":"integer","minimum":0},"timeout":{"type":"integer","minimum":0}}},
+    "rubric_constraints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["criterion_index","max_points","objective_check","scoring_constraint"],"properties":{"criterion_index":{"type":"integer","minimum":0},"max_points":{"type":"integer","minimum":1,"maximum":10},"objective_check":{"enum":["passed","failed","error","timeout","not_applicable"]},"scoring_constraint":{"enum":["max_rubric_points","zero_points"]}}}},
+    "learner_output":{"type":"object","additionalProperties":false,"required":["stdout","stderr","truncated"],"properties":{"stdout":{"type":"string"},"stderr":{"type":"string"},"truncated":{"type":"boolean"}}},
+    "safety":{"const":"trusted_local_code_only"}
+  }
+}

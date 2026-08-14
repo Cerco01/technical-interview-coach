@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "question_id": "q-python-003",
+  "score": 8,
+  "max_score": 10,
+  "criteria": [
+    {"criterion_index": 0, "criterion": "Example finalized criterion", "awarded_points": 3, "max_points": 3, "evidence": "The committed answer supplies direct evidence."}
+  ],
+  "summary": "Example post-commit summary.",
+  "improvement": "State the complexity argument more explicitly.",
+  "deterministic_status": "passed"
+}

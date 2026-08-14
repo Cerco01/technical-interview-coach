@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.interview-coach/schemas/session.schema.json",
+  "title": "Completed session compatibility contract",
+  "oneOf": [
+    {
+      "title": "Legacy practice session version 1",
+      "type": "object",
+      "required": ["schema_version", "id", "learner_id", "started_at", "ended_at", "mode", "question_attempts", "summary", "next_actions"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "id": {"type": "string", "pattern": "^session-[a-z0-9-]+$"},
+        "learner_id": {"type": "string"},
+        "started_at": {"type": "string", "format": "date-time"},
+        "ended_at": {"type": ["string", "null"], "format": "date-time"},
+        "mode": {"enum": ["interview", "study", "review"]},
+        "question_attempts": {"type": "array"},
+        "summary": {"type": "string"},
+        "next_actions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    {
+      "title": "Deterministic completed session version 1",
+      "type": "object",
+      "required": ["schema_version", "session_id", "flow", "mode", "status", "attempts", "report", "transition_log"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "session_id": {"type": "string", "pattern": "^session-[a-z0-9-]+$"},
+        "flow": {"enum": ["practice", "assessment"]},
+        "mode": {"enum": ["interview", "study", "review"]},
+        "status": {"const": "completed"},
+        "attempts": {"type": "array"},
+        "report": {"type": "object"},
+        "transition_log": {"type": "array"}
+      }
+    }
+  ]
+}

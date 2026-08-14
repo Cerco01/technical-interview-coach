@@ -1,0 +1,8 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://local.interview-coach/schemas/review-context.schema.json",
+  "title":"Post-commit LLM review context",
+  "type":"object",
+  "required":["schema_version","question_id","answer_committed","prompt","answer","deterministic_evidence","rubric","llm_protocol"],
+  "properties":{"schema_version":{"const":1},"question_id":{"type":"string"},"answer_committed":{"const":true},"prompt":{"type":"string"},"answer":{"type":"string"},"deterministic_evidence":{"type":["object","null"]},"rubric":{"type":"array"},"llm_protocol":{"type":"object"}}
+}

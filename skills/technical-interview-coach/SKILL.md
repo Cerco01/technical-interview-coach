@@ -14,12 +14,13 @@ Load this skill when the user wants to practice, study, review, resume, or evalu
 ## Hard Rules
 
 - Treat `curriculum/topics.json`, `data/questions/*.jsonl`, and `schemas/*.schema.json` as canonical.
-- Follow `docs/workflows.md`; in interview mode never reveal or paraphrase expected concepts, rubric criteria, hints, or solution guidance before answer commitment.
+- Follow `docs/workflows.md`; in interview mode never reveal or paraphrase expected concepts, rubric criteria, hints, or solution guidance before answer completion.
 - Ask one question at a time. Use original question wording from the selected record.
 - Never invent learner history. Read `state/learner.json` when present, otherwise offer `examples/learner.sample.json` only as a demonstration.
 - Persist only with user consent. Keep local records authoritative; use Engram only for durable qualitative learning observations.
 - Treat `flow` and `mode` separately. Practice never advances after record without an explicit learner action; assessment always advances after an accepted record and never leaks feedback while active.
 - In active assessment, never reveal hints, correctness, scores, detailed feedback, rubric content, expected concepts, or solutions. Release the report only after completion.
+- Create only the current question's scaffold. Do not precreate future question files or describe answer completion as a Git commit.
 
 ## Decision Gates
 
@@ -35,16 +36,19 @@ Load this skill when the user wants to practice, study, review, resume, or evalu
 2. Confirm mode, topic, difficulty, and duration when unspecified; ask only the minimum necessary question.
 3. Start or resume through `interview-coach session`. Do not invent state when the active file or completed history is absent.
 4. Filter practice by available topic, requested difficulty, and prerequisites. Assessment selection is package-owned and MUST follow its persisted blueprint and seed rather than prompt judgment.
-5. Run the mode workflow and score only after the permitted disclosure point.
-6. For executable questions, use `interview-coach evaluate` after answer commitment. Use `prepare-review` to load the rubric and objective evidence, then return criterion-level scores suitable for `finalize`.
-7. Record the finalized assessment with both current session and question IDs. In practice, show feedback and wait. In assessment, present only the automatically selected next learner-safe prompt.
-8. Finish explicitly or allow package-enforced limit/timeout completion, then use `session report`.
+5. After every new current question from practice start, `next`, `change-topic`, or relevant `retry`, and after assessment auto-advance, run `interview-coach scaffold <question-id> --output submissions/<session-id>/<question-id> --open`. Create only that question-specific file in the ignored, session-specific directory. Reuse the exact path printed by the CLI.
+6. Tell the learner the exact file to edit, then wait for "I am finished" or an equivalent explicit answer completion. This is not a Git commit. Do not evaluate, prepare review, or advance while waiting.
+7. For executable questions, use `interview-coach evaluate` only after answer completion. Use `prepare-review` to load the rubric and objective evidence, then return criterion-level scores suitable for `finalize`. For `answer.md` contracts, skip deterministic evaluation and use `prepare-review` directly.
+8. If editor opening warns or the client cannot launch VS Code, relay the printed path and manual `code -r <exact-file>` command. Do not fail the interview because editor opening failed.
+9. Do not open a file for a genuinely conversational-only contract unless `scaffold` supports it with an `answer.md` contract.
+10. Record the finalized assessment with both current session and question IDs. In practice, show feedback and wait. In assessment, present only the automatically selected next learner-safe prompt, scaffold it, and wait again.
+11. Finish explicitly or allow package-enforced limit/timeout completion, then use `session report`.
 
 ## Output Contract
 
-During practice, return the current prompt or post-commit feedback and remain paused. During active assessment, return only learner-safe status/current/record output. At close, return the released report with evidence caveats and no certification claim.
+During practice, return the current prompt or post-answer feedback and remain paused. During active assessment, return only learner-safe status/current/record output. At close, return the released report with evidence caveats and no certification claim.
 
-Local checks are evidence, not points. Never award subjective rubric credit automatically. A failed objective check blocks credit only for the rubric criteria identified by the post-commit evidence contract.
+Local checks are evidence, not points. Never award subjective rubric credit automatically. A failed objective check blocks credit only for the rubric criteria identified by the post-answer evidence contract.
 
 ## References
 

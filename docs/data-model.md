@@ -9,7 +9,7 @@ Local UTF-8 files are the source of truth. JSON is used for bounded documents, J
 | Topic | `curriculum/topics.json` | Validated by `scripts/validate.py` |
 | Question | `data/questions/*.jsonl` | `schemas/question.schema.json` |
 | Deterministic evidence | User-selected JSON file | `schemas/evidence.schema.json` |
-| Post-commit review context | User-selected JSON file | `schemas/review-context.schema.json` |
+| Post-answer review context | User-selected JSON file | `schemas/review-context.schema.json` |
 | Final assessment | User-selected JSON file | `schemas/assessment.schema.json` |
 | Active deterministic session | `state/active-session.json` or `--state` | `schemas/active-session.schema.json` |
 | Session transition | Embedded in active/completed state | `schemas/transition.schema.json` |
@@ -32,7 +32,7 @@ Examples under `examples/` are committed fixtures, not live learner data.
 
 The initial bank contains exactly 50 question-schema version 3 records. `priority_rank` is globally unique and contiguous from 1 (highest interview value) through 50. `tier` is one of `core`, `differentiator`, or `specialized`; `primary_format` and `primary_category` are stable enums used to validate bank balance. A question may reference several supporting topics, but its primary category is singular.
 
-Each question declares an evaluation strategy, public submission contract, optional package-private evaluator reference, and the rubric-criterion indices covered by objective checks. Evaluator references and objective mappings are post-commit internals and are excluded from learner-safe CLI output.
+Each question declares an evaluation strategy, public submission contract, optional package-private evaluator reference, and the rubric-criterion indices covered by objective checks. Evaluator references and objective mappings are post-answer internals and are excluded from learner-safe CLI output.
 
 Selection first respects topic, difficulty, learner due or unused state, and prerequisites. Rank and tier order otherwise eligible questions; they do not override learner evidence.
 

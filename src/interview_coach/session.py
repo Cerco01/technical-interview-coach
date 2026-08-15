@@ -504,7 +504,7 @@ def _build_report(state: dict[str, Any]) -> dict[str, Any]:
             "average": average,
             "minimum": min((item["score"] for item in attempts), default=None),
             "maximum": max((item["score"] for item in attempts), default=None),
-            "subjective_scoring_note": "Criterion scores were supplied post-commit by the LLM; deterministic checks supplied evidence and caps, not automatic points.",
+            "subjective_scoring_note": "Criterion scores were supplied post-answer by the LLM; deterministic checks supplied evidence and caps, not automatic points.",
         },
         "competency_evidence": competency,
         "strengths": strengths,
@@ -807,7 +807,7 @@ class SessionService:
             "session_id": state["session_id"],
             "action": "explain",
             "question_id": state["current_question_id"],
-            "instruction": "The LLM may now explain the finalized answer using post-commit context. Keep the session paused until the learner chooses next, retry, change-topic, or finish.",
+            "instruction": "The LLM may now explain the finalized answer using post-answer context. Keep the session paused until the learner chooses next, retry, change-topic, or finish.",
             "phase": "paused",
         }
 

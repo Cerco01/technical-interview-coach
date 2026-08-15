@@ -40,7 +40,10 @@ def require(condition: bool, message: str) -> None:
 
 def validate_privacy(root: Path) -> None:
     violations = []
+    git_dir = root / ".git"
     for path in sorted(root.rglob("*")):
+        if path != git_dir and git_dir in path.parents:
+            continue
         relative = path.relative_to(root)
         name = path.name
         if (

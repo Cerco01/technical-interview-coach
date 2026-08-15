@@ -142,7 +142,7 @@ def evidence_for(question_id: str, submission: Path, timeout: float = 10.0) -> d
     evaluation = question["evaluation"]
     strategy = evaluation["strategy"]
     if strategy == "rubric_only":
-        raise EvaluationError("this question is rubric-only; commit answer text and use prepare-review")
+        raise EvaluationError("this question is rubric-only; finish the answer text and use prepare-review")
     source = resolve_submission(submission, evaluation["submission_contract"]["filename"])
     if question_id in PYTHON_SPECS:
         status, checks, learner_output = run_python(question_id, source, timeout)

@@ -1,1 +1,1 @@
-"""Post-commit evaluator implementation details."""
+"""Post-answer evaluator implementation details."""

@@ -1,6 +1,6 @@
 # Technical Interview Coach
 
-**Practice technical interviews in your editor, commit to an answer, and get evidence-backed coaching without handing your workflow to a hosted platform.**
+**Practice technical interviews in your editor, finish one answer at a time, and get evidence-backed coaching without handing your workflow to a hosted platform.**
 
 Technical Interview Coach pairs an LLM-led interview with local, deterministic checks and resumable file-based sessions. Use it for guided practice or a timed adaptive assessment across Python, NumPy, Pandas, SQL, statistics, and machine learning.
 
@@ -8,11 +8,11 @@ Technical Interview Coach pairs an LLM-led interview with local, deterministic c
 ![Apache 2.0 license](https://img.shields.io/badge/License-Apache--2.0-2F855A)
 ![Question bank: 50](https://img.shields.io/badge/Questions-50-6B46C1)
 ![Deterministic evaluators: 22](https://img.shields.io/badge/Deterministic_evaluators-22-0F766E)
-![Test cases: 29](https://img.shields.io/badge/Tests-29-4B5563)
+![Test cases: 34](https://img.shields.io/badge/Tests-34-4B5563)
 
 | Coaching that adapts | Work that stays real |
 | --- | --- |
-| **LLM-led coaching** presents one question at a time and reviews committed reasoning. | **Editor-first answers** live in ordinary Python, SQL, or Markdown files. |
+| **LLM-led coaching** presents one question at a time and reviews finished reasoning. | **Editor-first answers** live in ordinary Python, SQL, or Markdown files. |
 | **Resumable practice** preserves local state and waits for your next action. | **Deterministic checks** test objective behavior locally before rubric review. |
 | **Timed assessment** adapts difficulty while withholding feedback until completion. | **Client-independent files** work across supported coding agents without a plugin. |
 
@@ -51,8 +51,8 @@ In OpenCode, run `/skills` and confirm that `technical-interview-coach` appears.
 
 | Tool | Responsibility |
 | --- | --- |
-| **OpenCode / LLM** | Presents the learner-safe prompt, coaches according to the selected mode, and scores the committed answer against the post-commit rubric. |
-| **VS Code / editor** | Holds the answer you can inspect, run, revise, and explicitly commit before review. |
+| **OpenCode / LLM** | Presents the learner-safe prompt, creates its scaffold, and waits for explicit completion before review. |
+| **VS Code / editor** | Holds the one current answer you can inspect, run, and revise before saying "I am finished." |
 | **Local CLI** | Owns session state, deterministic evidence, score constraints, progression, and reports. |
 
 No global skill copy or provider-specific plugin is required. OpenCode drives the conversation; your editor and local files remain the working surface.
@@ -67,7 +67,7 @@ No global skill copy or provider-specific plugin is required. OpenCode drives th
 | Default behavior | Feedback after finalization; hints depend on mode | 12 questions in 75 minutes |
 | Progression | Manual: `next`, `retry`, `explain`, `change-topic`, or `finish` | Automatic after each accepted record |
 | Difficulty | Selected for the session | Adaptive from recent finalized scores |
-| Feedback | Available after each committed answer | Delayed until limit, timeout, or explicit finish |
+| Feedback | Available after each finished answer | Delayed until limit, timeout, or explicit finish |
 
 Practice always pauses after recording an answer. Assessment always uses interview mode, starts at intermediate difficulty, preserves its category blueprint, and never reveals scores, correctness, hints, rubrics, or solutions while active. See [Coaching Workflows](docs/workflows.md) for the full disclosure and adaptation rules.
 
@@ -78,7 +78,7 @@ interview-coach session start --flow practice --mode study --seed first-practice
 interview-coach session current
 ```
 
-Answer the displayed question in the scaffold or answer file. After the LLM and CLI finalize and record that answer, practice remains paused until you choose the next action:
+The LLM creates only the current question's file in a session-specific and question-specific ignored directory, asks VS Code to open it, and tells you the exact path. Say "I am finished" when the answer is ready. This is not a Git commit. After the LLM and CLI finalize and record that answer, practice remains paused until you choose the next action:
 
 ```bash
 interview-coach session next
@@ -102,28 +102,32 @@ interview-coach session report
 
 ## How Answers Are Evaluated
 
-The project separates objective execution from subjective judgment. You commit to an answer first; only then can the LLM see the rubric and solution-oriented review context.
+The project separates objective execution from subjective judgment. You explicitly finish an answer first; only then can the LLM see the rubric and solution-oriented review context.
 
 ```mermaid
 flowchart LR
-    Q["Question"] --> E["Edit and commit submission"]
+    Q["Question"] --> E["Edit current submission"]
     E --> L["Local evaluator<br/>when available"]
-    L --> R["Post-commit LLM rubric"]
+    L --> R["Post-answer LLM rubric"]
     R --> F["Finalized evidence and report"]
 ```
 
-Local checks produce evidence, not automatic points. Failed checks cap only the rubric criteria they cover; passing checks make full credit possible but do not guarantee it. Conceptual and case-study answers skip deterministic execution and go directly to post-commit rubric review. This keeps correction useful without exposing internal rubrics, evaluator fixtures, hints, or solutions before commitment.
+Local checks produce evidence, not automatic points. Failed checks cap only the rubric criteria they cover; passing checks make full credit possible but do not guarantee it. Conceptual and case-study answers skip deterministic execution and go directly to post-answer rubric review. This keeps correction useful without exposing internal rubrics, evaluator fixtures, hints, or solutions before answer completion.
 
 For a one-off implementation question, the local part of the workflow is:
 
 ```bash
 interview-coach show q-python-003
-interview-coach scaffold q-python-003 --output submissions/q-python-003
-interview-coach evaluate q-python-003 submissions/q-python-003 \
+interview-coach scaffold q-python-003 \
+  --output submissions/session-example/q-python-003 \
+  --open
+interview-coach evaluate q-python-003 submissions/session-example/q-python-003 \
   --output evidence/q-python-003.json
 ```
 
-The LLM then uses `prepare-review` after commitment and returns criterion-level scores for `finalize`. See [Coaching Workflows](docs/workflows.md#hybrid-evaluation) for that boundary and [Canonical Data Model](docs/data-model.md) for the generated evidence and report contracts.
+The scaffold command prints the exact path even when editor opening fails. `code -r` reuses the current VS Code window; if `code` is unavailable, run VS Code's **Shell Command: Install 'code' command in PATH** or open the printed file manually. Other LLM clients use the same path without requiring editor control. Do not precreate future question files.
+
+The LLM waits for "I am finished," then uses `prepare-review` and returns criterion-level scores for `finalize`. This answer completion is not a Git commit. See [Coaching Workflows](docs/workflows.md#hybrid-evaluation) for that boundary and [Canonical Data Model](docs/data-model.md) for the generated evidence and report contracts.
 
 ## Coverage
 
@@ -135,7 +139,7 @@ The curriculum maps **37 topics**: 26 currently have curated questions and 11 re
 | `sql` | 7 | Read-only queries against fresh in-memory SQLite fixtures |
 | `dataframe` | 5 | Pandas submissions in a child process |
 | `numeric` | 5 | NumPy-based submissions in a child process |
-| `rubric_only` | 28 | Post-commit LLM review for reasoning-led answers |
+| `rubric_only` | 28 | Post-answer LLM review for reasoning-led answers |
 
 All 10 implementation, 7 SQL-query, and 5 data-manipulation questions have deterministic checks. Read the [Curriculum Map](docs/curriculum.md) for topic status and selection semantics.
 
@@ -145,7 +149,7 @@ The workflow is file-first and compatible with **OpenCode, Codex, and Claude Cod
 
 Example client instruction:
 
-> Load `skills/technical-interview-coach/SKILL.md`, start a practice session, and do not reveal rubric or solution guidance before I commit my answer.
+> Load `skills/technical-interview-coach/SKILL.md`, start a practice session, and do not reveal rubric or solution guidance before I say "I am finished."
 
 The CLI and canonical JSON/JSONL files remain authoritative, so changing the conversational client does not change session or evaluation contracts.
 
@@ -177,6 +181,6 @@ Learner answers, evidence, active state, and completed sessions belong in ignore
 
 ## Status and License
 
-The current source package version is **0.2.0**. It is installable from this repository, declares Python 3.11+ compatibility, includes 50 questions and 22 deterministic evaluators, and contains 29 test cases.
+The current source package version is **0.2.0**. It is installable from this repository, declares Python 3.11+ compatibility, includes 50 questions and 22 deterministic evaluators, and contains 34 test cases.
 
 Licensed under the [Apache License 2.0](LICENSE). Maintained by the Technical Interview Coach contributors; contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).

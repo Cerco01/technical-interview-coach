@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from collections import Counter
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from interview_coach.bank import get_question, questions
-from interview_coach.cli import main
+from interview_coach.cli import create_scaffold, main, scaffold_text
 from interview_coach.evaluation import EvaluationError, evidence_for
 from interview_coach.review import ReviewError, finalize, prepare
 from interview_coach.validation import ValidationError, validate, validate_privacy
@@ -50,16 +54,105 @@ class CoachBehaviorTests(unittest.TestCase):
             self.assertNotIn(forbidden, shown.stdout)
         self.assertIn("count_words", shown.stdout)
 
-    def test_scaffold_is_safe_and_refuses_overwrite(self):
+    def test_scaffold_creates_exact_path_and_preserves_existing_content(self):
         with tempfile.TemporaryDirectory() as directory:
             first = self.cli("scaffold", "q-python-003", "--output", directory)
+            path = Path(first.stdout.strip())
+            original = path.read_text(encoding="utf-8")
             second = self.cli("scaffold", "q-python-003", "--output", directory)
-            text = (Path(directory) / "solution.py").read_text(encoding="utf-8")
-            self.assertEqual(0, first.returncode)
-            self.assertNotEqual(0, second.returncode)
-            self.assertIn("def count_words(words)", text)
-            self.assertNotIn("case-insensitive", text)
-            self.assertNotIn("rubric", text.lower())
+            self.assertEqual(0, first.returncode, first.stderr)
+            self.assertEqual((Path(directory) / "solution.py").resolve(), path)
+            self.assertEqual(0, second.returncode, second.stderr)
+            self.assertEqual(first.stdout, second.stdout)
+            self.assertEqual(original, path.read_text(encoding="utf-8"))
+            path.write_text("learner work\n", encoding="utf-8")
+            third = self.cli("scaffold", "q-python-003", "--output", directory)
+            self.assertEqual(0, third.returncode, third.stderr)
+            self.assertEqual("learner work\n", path.read_text(encoding="utf-8"))
+
+    def test_scaffold_populates_empty_file_and_rejects_unsafe_collisions(self):
+        question = get_question("q-python-003")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty = root / "solution.py"
+            empty.touch()
+            self.assertEqual(empty.resolve(), create_scaffold(question, root))
+            self.assertIn("def count_words(words)", empty.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "solution.py").mkdir()
+            with self.assertRaises(EvaluationError):
+                create_scaffold(question, root)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "not-a-directory"
+            output.write_text("collision", encoding="utf-8")
+            with self.assertRaises(EvaluationError):
+                create_scaffold(question, output)
+        with tempfile.TemporaryDirectory() as directory:
+            unsafe = json.loads(json.dumps(question))
+            unsafe["evaluation"]["submission_contract"]["filename"] = "../escape.py"
+            with self.assertRaises(EvaluationError):
+                create_scaffold(unsafe, Path(directory))
+
+    def test_scaffold_open_uses_exact_vscode_argument_array(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stdout = StringIO()
+            with mock.patch("interview_coach.cli.subprocess.run") as run, redirect_stdout(stdout):
+                run.return_value = subprocess.CompletedProcess([], 0, "", "")
+                result = main(["scaffold", "q-python-003", "--output", directory, "--open"])
+            path = (Path(directory) / "solution.py").resolve()
+            self.assertEqual(0, result)
+            self.assertEqual(f"{path}\n", stdout.getvalue())
+            run.assert_called_once_with(["code", "-r", str(path)], capture_output=True, text=True, check=False, shell=False)
+
+    def test_scaffold_editor_failures_are_non_fatal_and_actionable(self):
+        failures = (
+            FileNotFoundError("code not found"),
+            subprocess.CompletedProcess([], 1, "", "editor failed"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as directory:
+                stdout, stderr = StringIO(), StringIO()
+                behavior = {"side_effect": failure} if isinstance(failure, OSError) else {"return_value": failure}
+                with mock.patch("interview_coach.cli.subprocess.run", **behavior), redirect_stdout(stdout), redirect_stderr(stderr):
+                    result = main(["scaffold", "q-python-003", "--output", directory, "--open"])
+                path = (Path(directory) / "solution.py").resolve()
+                self.assertEqual(0, result)
+                self.assertEqual(f"{path}\n", stdout.getvalue())
+                self.assertTrue(path.is_file())
+                self.assertIn(str(path), stderr.getvalue())
+                self.assertIn("code -r", stderr.getvalue())
+                self.assertIn("Install 'code' command in PATH", stderr.getvalue())
+
+    def test_all_submission_contracts_have_safe_solution_free_scaffolds(self):
+        expected = {
+            "python_module": ("solution.py", ".py", "NotImplementedError"),
+            "sql_query": ("answer.sql", ".sql", "SELECT or WITH"),
+            "answer_text": ("answer.md", ".md", "reasoning"),
+        }
+        seen = set()
+        for question_id, question in questions(ROOT).items():
+            with self.subTest(question_id=question_id):
+                contract = question["evaluation"]["submission_contract"]
+                filename, suffix, marker = expected[contract["kind"]]
+                text = scaffold_text(question)
+                seen.add(contract["kind"])
+                self.assertEqual(filename, contract["filename"])
+                self.assertEqual(suffix, Path(filename).suffix)
+                self.assertIn(marker, text)
+                for forbidden in ("expected_concepts", "rubric", "hints", "follow_ups", "evaluator_ref", "case-insensitive"):
+                    self.assertNotIn(forbidden, text.lower())
+        self.assertEqual(set(expected), seen)
+
+    def test_skill_and_docs_require_one_scaffold_per_current_question(self):
+        skill = (ROOT / "skills/technical-interview-coach/SKILL.md").read_text(encoding="utf-8")
+        workflow = (ROOT / "docs/workflows.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((skill, workflow, readme)).lower()
+        for required in ("--open", "session-specific", "question-specific", "i am finished", "not a git commit", "do not precreate"):
+            self.assertIn(required, combined)
+        self.assertIn("practice start", skill.lower())
+        self.assertIn("assessment auto-advance", skill.lower())
 
     def test_python_evaluation_pass_fail_error_and_timeout(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -182,6 +275,23 @@ class CoachBehaviorTests(unittest.TestCase):
                 path.write_bytes(content)
                 with self.assertRaises(ValidationError):
                     validate_privacy(Path(directory))
+
+    def test_privacy_guard_scans_untracked_and_ignored_files_but_skips_git_internals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".gitignore").write_text("*.pdf\n", encoding="utf-8")
+            (root / ".git" / "internal.pdf").write_bytes(b"git control data")
+            validate_privacy(root)
+            for name in (".env", "ignored.pdf"):
+                with self.subTest(name=name):
+                    path = root / name
+                    path.write_bytes(b"prohibited")
+                    if name == "ignored.pdf":
+                        self.assertEqual(0, subprocess.run(["git", "-C", str(root), "check-ignore", "-q", name]).returncode)
+                    with self.assertRaisesRegex(ValidationError, re.escape(name)):
+                        validate_privacy(root)
+                    path.unlink()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -39,12 +40,13 @@ def parser() -> argparse.ArgumentParser:
     scaffold = sub.add_parser("scaffold", help="create a learner-safe submission scaffold")
     scaffold.add_argument("question_id")
     scaffold.add_argument("--output", type=Path, required=True)
+    scaffold.add_argument("--open", action="store_true", help="open the scaffold in the current VS Code window")
     evaluate = sub.add_parser("evaluate", help="run deterministic checks and write objective evidence")
     evaluate.add_argument("question_id")
     evaluate.add_argument("submission", type=Path)
     evaluate.add_argument("--output", type=Path, required=True)
     evaluate.add_argument("--timeout", type=float, default=10.0)
-    review = sub.add_parser("prepare-review", help="create post-commit LLM scoring context")
+    review = sub.add_parser("prepare-review", help="create post-answer LLM scoring context")
     review.add_argument("question_id")
     review.add_argument("answer", type=Path)
     review.add_argument("--evidence", type=Path)
@@ -87,7 +89,7 @@ def parser() -> argparse.ArgumentParser:
     change_topic = session_sub.add_parser("change-topic", help="select the next practice question from another topic")
     change_topic.add_argument("topic_id")
     add_storage(change_topic)
-    explain = session_sub.add_parser("explain", help="record a post-commit LLM explanation request")
+    explain = session_sub.add_parser("explain", help="record a post-answer LLM explanation request")
     add_storage(explain)
     finish = session_sub.add_parser("finish", help="finish and archive the active session")
     add_storage(finish)
@@ -107,7 +109,38 @@ def scaffold_text(question: dict[str, Any]) -> str:
     if kind == "sql_query":
         columns = ", ".join(contract["columns"])
         return f"-- Submission for {question['id']}\n-- Write one read-only SELECT or WITH query.\n-- Output columns in order: {columns}\n"
-    return f"# Answer for {question['id']}\n\nCommit your reasoning here before requesting rubric evaluation.\n"
+    return f"# Answer for {question['id']}\n\nWrite your reasoning here. Tell the coach \"I am finished\" when your answer is ready.\n"
+
+
+def create_scaffold(question: dict[str, Any], output: Path) -> Path:
+    filename = question["evaluation"]["submission_contract"]["filename"]
+    relative = Path(filename)
+    if relative.is_absolute() or relative.name != filename:
+        raise EvaluationError(f"unsafe scaffold filename: {filename}")
+    if output.is_symlink() or (output.exists() and not output.is_dir()):
+        raise EvaluationError(f"scaffold output must be a directory: {output}")
+    output.mkdir(parents=True, exist_ok=True)
+    destination = output / relative
+    if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+        raise EvaluationError(f"unsafe scaffold collision: {destination}")
+    if not destination.exists() or destination.stat().st_size == 0:
+        destination.write_text(scaffold_text(question), encoding="utf-8")
+    return destination.resolve()
+
+
+def open_in_vscode(path: Path) -> None:
+    command = ["code", "-r", str(path)]
+    manual = f"Open it manually with: code -r {path}"
+    install = "In VS Code, run Shell Command: Install 'code' command in PATH if needed."
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, check=False, shell=False)
+    except OSError as exc:
+        print(f"WARNING: scaffold created at {path}, but VS Code could not be opened ({exc}). {manual}. {install}", file=sys.stderr)
+        return
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()
+        suffix = f" ({detail})" if detail else ""
+        print(f"WARNING: scaffold created at {path}, but VS Code exited with code {completed.returncode}{suffix}. {manual}. {install}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -159,12 +192,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{safe['id']}: {safe['title']}\n\n{safe['prompt']}\n\nSubmission: {safe['submission_contract']['filename']} ({safe['evaluation_strategy']})")
             return 0
         if args.command == "scaffold":
-            filename = question["evaluation"]["submission_contract"]["filename"]
-            args.output.mkdir(parents=True, exist_ok=True)
-            destination = args.output / filename
-            if destination.exists(): raise EvaluationError(f"refusing to overwrite existing scaffold: {destination}")
-            destination.write_text(scaffold_text(question), encoding="utf-8")
-            print(destination)
+            destination = create_scaffold(question, args.output)
+            print(destination, flush=True)
+            if args.open:
+                open_in_vscode(destination)
             return 0
         if args.command == "evaluate":
             if args.timeout <= 0: raise EvaluationError("--timeout must be greater than zero")

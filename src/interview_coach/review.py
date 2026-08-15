@@ -26,7 +26,7 @@ def prepare(question_id: str, answer_path: Path, evidence_path: Path | None) -> 
     try:
         answer = answer_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ReviewError(f"could not read committed answer: {exc}") from exc
+        raise ReviewError(f"could not read completed answer: {exc}") from exc
     evidence = read_object(evidence_path) if evidence_path else None
     if evidence and evidence.get("question_id") != question_id:
         raise ReviewError("evidence question_id does not match requested question")

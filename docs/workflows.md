@@ -9,7 +9,17 @@ Choose a session flow and pedagogical mode before selecting a question. The flow
 | Practice | Learner explicitly chooses the next action | Immediate after finalization | Allowed by study/review rules | Learner finish or configured limit/time |
 | Assessment | Automatically advances after a bound finalized record | Withheld until completion | Never | 12-question/75-minute default, user finish, timeout, or unrecoverable state |
 
-Practice actions are `next`, `retry`, `explain`, `change-topic`, and `finish`. Recording a practice answer MUST leave the session paused. `explain` records an LLM-handled post-commit action and MUST NOT advance.
+Practice actions are `next`, `retry`, `explain`, `change-topic`, and `finish`. Recording a practice answer MUST leave the session paused. `explain` records an LLM-handled post-answer action and MUST NOT advance.
+
+For every newly current question, create only its submission file in `submissions/<session-id>/<question-id>/`. Practice start, `next`, `change-topic`, and a relevant `retry` trigger this lifecycle; assessment record auto-advance does the same. These are ignored, session-specific and question-specific learner files. Do not precreate later questions.
+
+```bash
+interview-coach scaffold <question-id> \
+  --output submissions/<session-id>/<question-id> \
+  --open
+```
+
+The command always prints the exact file path. A missing file or an existing empty file receives the learner-safe template; an existing non-empty file is returned unchanged. Directory, symlink, and unsafe filename collisions fail without modifying learner work. `--open` runs `code -r <exact-file>` so a VS Code integrated terminal reuses the current window. If the editor command is missing or fails, scaffold creation still succeeds: relay the printed path, open it manually, or run VS Code's **Shell Command: Install 'code' command in PATH**. Other clients remain fully functional because the path is standard output.
 
 Assessment uses interview mode, begins at intermediate difficulty, and accepts 5-30 questions and 15-180 minutes. Twelve questions at 75 minutes is the standard configuration and generally takes approximately 60-75 minutes depending on response speed.
 
@@ -61,14 +71,14 @@ During an active assessment, learner-facing output contains only session timing/
 1. Agree on topic, difficulty, duration, and whether clarifying questions are allowed.
 2. Select an eligible matching question from an `available` topic. Prefer unused questions, then lower `priority_rank` and `core` tier material while respecting difficulty and prerequisites.
 3. Present only the question `prompt` and relevant constraints.
-4. Ask the learner to reason aloud and commit to an answer.
+4. Scaffold the current answer, give the learner the exact path, and wait for "I am finished" or equivalent.
 5. Use neutral clarification, not directional coaching.
-6. After commitment, run deterministic evaluation when declared, then score against the rubric using the answer and objective evidence. Explain gaps and ask at most two follow-ups.
+6. After answer completion, run deterministic evaluation when declared, then score against the rubric using the answer and objective evidence. This boundary is not a Git commit. Explain gaps and ask at most two follow-ups.
 7. Summarize evidence and propose the next topic or review date.
 
 ### Non-Disclosure Guardrail
 
-Before the learner commits, do not quote, paraphrase, enumerate, or confirm `expected_concepts`, rubric criteria, hints, solution reasoning, or follow-up answers. If the learner asks for help, offer one choice: continue unaided or convert the current question to study mode. Record the mode change. A factual clarification may define ambiguous wording but must not narrow the solution.
+Before the learner finishes the answer, do not quote, paraphrase, enumerate, or confirm `expected_concepts`, rubric criteria, hints, solution reasoning, or follow-up answers. If the learner asks for help, offer one choice: continue unaided or convert the current question to study mode. Record the mode change. A factual clarification may define ambiguous wording but must not narrow the solution.
 
 ## Study Mode
 
@@ -97,12 +107,14 @@ Never store secrets, full chat transcripts, or unrelated personal information. P
 
 ## Hybrid Evaluation
 
-The commitment boundary applies to CLI use as well as conversation:
+The answer-completion boundary applies to CLI use as well as conversation:
 
 1. `list`, `show`, and `scaffold` may expose only learner-safe metadata, prompts, and public submission contracts.
-2. `evaluate` runs declared local checks and writes stable evidence. It never assigns subjective rubric points.
-3. `prepare-review` is post-commit and may expose the rubric, answer, and deterministic evidence to the LLM.
-4. The LLM scores every rubric criterion with concise cited evidence.
-5. `finalize` rejects scores above rubric maxima and nonzero scores blocked by failed objective checks, then computes the 0-10 total.
+2. Create or reuse only the current question's scaffold. Never truncate a non-empty learner submission and never precreate future answers.
+3. Wait for the learner's explicit "I am finished" before `evaluate` or `prepare-review`; answer completion is not a Git commit.
+4. `evaluate` runs declared local checks and writes stable evidence. It never assigns subjective rubric points.
+5. `prepare-review` is post-answer and may expose the rubric, answer, and deterministic evidence to the LLM.
+6. The LLM scores every rubric criterion with concise cited evidence.
+7. `finalize` rejects scores above rubric maxima and nonzero scores blocked by failed objective checks, then computes the 0-10 total.
 
-Passing local checks is necessary for full credit on covered criteria but is not sufficient. Rubric-only questions skip step 2 rather than using fake keyword or exact-answer automation.
+Passing local checks is necessary for full credit on covered criteria but is not sufficient. Rubric-only questions skip step 4 rather than using fake keyword or exact-answer automation.

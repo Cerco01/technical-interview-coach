@@ -16,6 +16,7 @@ sys.path.insert(0, str(SRC))
 
 from interview_coach.bank import questions
 from interview_coach.session import ACTIVE_ASSESSMENT_RECORD_ERROR, CORE_CATEGORIES, SessionError, SessionService, SessionStore
+from interview_coach.session_rules import adapt_difficulty, candidate_identity, select_assessment, transition
 
 
 class MutableClock:
@@ -53,6 +54,53 @@ class SessionBehaviorTests(unittest.TestCase):
         status = service.status()
         path = self.assessment(directory, status["current_question_id"], score, marker)
         return service.record(status["session_id"], status["current_question_id"], path)
+
+    def test_assessment_rule_preserves_seeded_selection_without_io(self):
+        records = questions()
+        identities = candidate_identity(records.values())
+        state = {
+            "eligible_candidate_ids": [item["id"] for item in identities],
+            "selected_question_ids": [],
+            "difficulty_state": {"current": "intermediate"},
+            "history": {"recent_question_ids": []},
+            "seed": "repeatable",
+            "learner_context": None,
+        }
+        original = json.loads(json.dumps(state))
+
+        first = select_assessment(state, records)
+        second = select_assessment(state, records)
+
+        self.assertEqual(first, second)
+        self.assertEqual("q-python-001", first[0])
+        self.assertEqual(original, state)
+
+    def test_transition_rule_is_pure_and_deterministic(self):
+        details = {"question_id": "q-python-001"}
+        original = dict(details)
+
+        first = transition(3, "answer_recorded", "answering", "advancing", "2026-08-15T12:00:00Z", details)
+        second = transition(3, "answer_recorded", "answering", "advancing", "2026-08-15T12:00:00Z", details)
+
+        self.assertEqual(first, second)
+        self.assertEqual(3, first["sequence"])
+        self.assertEqual(original, details)
+        self.assertIsNot(first["details"], details)
+
+    def test_difficulty_adaptation_rule_is_pure_and_deterministic(self):
+        difficulty = {"current": "intermediate", "evidence_since_change": [9], "lock_remaining": 0, "last_direction": None}
+        original = json.loads(json.dumps(difficulty))
+
+        first = adapt_difficulty(difficulty, 8)
+        second = adapt_difficulty(difficulty, 8)
+
+        self.assertEqual(first, second)
+        self.assertEqual(original, difficulty)
+        self.assertEqual(
+            ({"current": "advanced", "evidence_since_change": [], "lock_remaining": 2, "last_direction": "up"},
+             {"action": "up", "from": "intermediate", "to": "advanced", "scores": [9, 8]}),
+            first,
+        )
 
     def test_practice_pauses_and_requires_explicit_next(self):
         with tempfile.TemporaryDirectory() as directory:

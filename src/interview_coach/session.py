@@ -5,9 +5,23 @@ import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable, cast
 
 from .bank import learner_safe, questions
+from .contracts import (
+    AdaptationDecision,
+    Attempt,
+    CompletionReason,
+    Difficulty,
+    FinalAssessment,
+    Flow,
+    LearnerContext,
+    Mode,
+    QuestionBank,
+    SessionReport,
+    SessionState,
+    TopicProgress,
+)
 from .session_rules import (
     ACTIVE_ASSESSMENT_RECORD_ERROR,
     ASSESSMENT_BLUEPRINT,
@@ -42,7 +56,7 @@ def system_clock() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def read_object(path: Path) -> dict[str, Any]:
+def read_object(path: Path) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -57,16 +71,16 @@ class SessionStore:
         self.state_path = state_path
         self.sessions_dir = sessions_dir
 
-    def load(self) -> dict[str, Any]:
+    def load(self) -> SessionState:
         state = read_object(self.state_path)
         required = {"schema_version", "session_id", "status", "revision", "transition_log"}
         if state.get("schema_version") != 1 or not required <= set(state):
             raise SessionError(f"{self.state_path}: malformed or incompatible active session state")
         if state["status"] != "active":
             raise SessionError(f"{self.state_path}: stale completed state conflicts with a new active session")
-        return state
+        return cast(SessionState, state)
 
-    def _atomic_write(self, path: Path, value: dict[str, Any]) -> None:
+    def _atomic_write(self, path: Path, value: SessionState) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
         descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -91,20 +105,20 @@ class SessionStore:
             temporary.unlink(missing_ok=True)
             raise
 
-    def create(self, state: dict[str, Any]) -> None:
+    def create(self, state: SessionState) -> None:
         if self.state_path.exists():
             self.load()
             raise SessionError(f"active session already exists: {self.state_path}")
         self._atomic_write(self.state_path, state)
 
-    def save(self, state: dict[str, Any], expected_revision: int) -> None:
+    def save(self, state: SessionState, expected_revision: int) -> None:
         current = self.load()
         if current["session_id"] != state["session_id"] or current["revision"] != expected_revision:
             raise SessionError("active session changed in another process; reload before retrying")
         state["revision"] = expected_revision + 1
         self._atomic_write(self.state_path, state)
 
-    def archive(self, state: dict[str, Any], expected_revision: int) -> Path:
+    def archive(self, state: SessionState, expected_revision: int) -> Path:
         current = self.load()
         if current["session_id"] != state["session_id"] or current["revision"] != expected_revision:
             raise SessionError("active session changed in another process; reload before finishing")
@@ -119,7 +133,7 @@ class SessionStore:
         self.state_path.unlink()
         return destination
 
-    def completed(self, session_id: str | None = None) -> dict[str, Any]:
+    def completed(self, session_id: str | None = None) -> SessionState:
         if session_id:
             path = self.sessions_dir / f"{session_id}.json"
         else:
@@ -130,7 +144,7 @@ class SessionStore:
         state = read_object(path)
         if state.get("status") != "completed" or not isinstance(state.get("report"), dict):
             raise SessionError(f"{path}: malformed completed session")
-        return state
+        return cast(SessionState, state)
 
 
 def default_paths(state: Path | None = None, data_dir: Path | None = None) -> SessionStore:
@@ -171,14 +185,14 @@ def _history_records(sessions_dir: Path) -> tuple[list[str], list[str]]:
     return attempted[-24:], sources
 
 
-def _learner_context(path: Path | None) -> dict[str, Any] | None:
+def _learner_context(path: Path | None) -> LearnerContext | None:
     if path is None or not path.exists():
         return None
     value = read_object(path)
     progress = value.get("topic_progress")
     if value.get("schema_version") != 1 or not isinstance(progress, list):
         raise SessionError(f"{path}: malformed or incompatible learner state")
-    normalized = []
+    normalized: list[TopicProgress] = []
     for item in progress:
         if not isinstance(item, dict) or not isinstance(item.get("topic_id"), str):
             raise SessionError(f"{path}: malformed topic progress")
@@ -189,19 +203,19 @@ def _learner_context(path: Path | None) -> dict[str, Any] | None:
     return {"source": path.name, "digest": digest(normalized), "topic_progress": normalized}
 
 
-def _transition(state: dict[str, Any], event: str, before: str, after: str, at: str, details: dict[str, Any] | None = None) -> None:
+def _transition(state: SessionState, event: str, before: str, after: str, at: str, details: dict[str, object] | None = None) -> None:
     entry = _transition_rule(len(state["transition_log"]), event, before, after, at, details)
     state["transition_log"].append(entry)
 
 
-def _adapt_difficulty(state: dict[str, Any]) -> dict[str, Any]:
+def _adapt_difficulty(state: SessionState) -> AdaptationDecision:
     difficulty, decision = _adapt_difficulty_rule(state["difficulty_state"], state["attempts"][-1]["score"])
     state["difficulty_state"] = difficulty
     return decision
 
 
 class SessionService:
-    def __init__(self, store: SessionStore, clock: Clock = system_clock, bank: dict[str, dict[str, Any]] | None = None):
+    def __init__(self, store: SessionStore, clock: Clock = system_clock, bank: QuestionBank | None = None):
         self.store = store
         self.clock = clock
         self.bank = bank or questions()
@@ -212,15 +226,15 @@ class SessionService:
 
     def start(
         self,
-        flow: str,
-        mode: str = "study",
+        flow: Flow,
+        mode: Mode = "study",
         seed: str = "interview-coach",
         question_limit: int | None = None,
         duration_minutes: int | None = None,
-        difficulty: str = "intermediate",
+        difficulty: Difficulty = "intermediate",
         topic_id: str | None = None,
         learner_state: Path | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         if flow not in {"practice", "assessment"}:
             raise SessionError("flow must be practice or assessment")
         if mode not in {"interview", "study", "review"}:
@@ -248,7 +262,7 @@ class SessionService:
         learner = _learner_context(learner_state)
         identities = _candidate_identity(self.bank.values())
         session_id = f"session-{now.strftime('%Y%m%d-%H%M%S')}-{digest([seed, now_text])[:8]}"
-        state: dict[str, Any] = {
+        state: SessionState = {
             "schema_version": 1,
             "session_id": session_id,
             "flow": flow,
@@ -289,14 +303,14 @@ class SessionService:
         self.store.create(state)
         return self._status_projection(state, now)
 
-    def _load_active(self) -> tuple[dict[str, Any], datetime]:
+    def _load_active(self) -> tuple[SessionState, datetime]:
         state = self.store.load()
         now, _ = self._now()
         if state["flow"] == "assessment" and state["deadline_at"] and now >= parse_utc(state["deadline_at"]):
             return self._complete(state, "time_expired", now), now
         return state, now
 
-    def _complete(self, state: dict[str, Any], reason: str, now: datetime) -> dict[str, Any]:
+    def _complete(self, state: SessionState, reason: CompletionReason, now: datetime) -> SessionState:
         if state["status"] == "completed":
             return state
         now_text = utc_text(now)
@@ -311,7 +325,7 @@ class SessionService:
         self.store.archive(state, revision)
         return state
 
-    def _status_projection(self, state: dict[str, Any], now: datetime) -> dict[str, Any]:
+    def _status_projection(self, state: SessionState, now: datetime) -> dict[str, object]:
         elapsed = max(0, int((now - parse_utc(state["started_at"])).total_seconds()))
         remaining = max(0, int((parse_utc(state["deadline_at"]) - now).total_seconds())) if state["deadline_at"] else None
         result = {
@@ -338,11 +352,11 @@ class SessionService:
             result["report_available"] = True
         return result
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         state, now = self._load_active()
         return self._status_projection(state, now)
 
-    def current(self) -> dict[str, Any]:
+    def current(self) -> dict[str, object]:
         state, now = self._load_active()
         if state["status"] != "active":
             return self._status_projection(state, now)
@@ -351,13 +365,14 @@ class SessionService:
         result["question"] = _active_assessment_question(question) if state["flow"] == "assessment" else learner_safe(question)
         return result
 
-    def record(self, session_id: str, question_id: str, assessment_path: Path) -> dict[str, Any]:
+    def record(self, session_id: str, question_id: str, assessment_path: Path) -> dict[str, object]:
         state, now = self._load_active()
         if state["status"] != "active":
             raise SessionError(f"session completed before the assessment could be recorded: {state['completion_reason']}")
         try:
-            assessment = read_object(assessment_path)
-            _validate_final_assessment(assessment)
+            assessment_value = read_object(assessment_path)
+            _validate_final_assessment(assessment_value)
+            assessment = cast(FinalAssessment, assessment_value)
             assessment_id = digest(assessment)
             record_id = digest([session_id, question_id, assessment_id])
             prior = next((item for item in state["attempts"] if item["record_id"] == record_id), None)
@@ -377,7 +392,7 @@ class SessionService:
                 raise SessionError(ACTIVE_ASSESSMENT_RECORD_ERROR) from None
             raise
         now_text = utc_text(now)
-        attempt = {
+        attempt: Attempt = {
             "record_id": record_id,
             "assessment_id": assessment_id,
             "question_id": question_id,
@@ -420,13 +435,13 @@ class SessionService:
         result.update({"accepted": True, "idempotent": False, "record_id": record_id})
         return result
 
-    def _practice_state(self) -> tuple[dict[str, Any], datetime]:
+    def _practice_state(self) -> tuple[SessionState, datetime]:
         state, now = self._load_active()
         if state["status"] != "active" or state["flow"] != "practice":
             raise SessionError("command requires an active practice session")
         return state, now
 
-    def next(self) -> dict[str, Any]:
+    def next(self) -> dict[str, object]:
         state, now = self._practice_state()
         if state["phase"] != "paused":
             raise SessionError("practice advances only after a finalized answer and explicit next action")
@@ -446,7 +461,7 @@ class SessionService:
         self.store.save(state, revision)
         return self.current()
 
-    def retry(self) -> dict[str, Any]:
+    def retry(self) -> dict[str, object]:
         state, now = self._practice_state()
         if state["phase"] != "paused":
             raise SessionError("retry requires a finalized practice question")
@@ -458,7 +473,7 @@ class SessionService:
         self.store.save(state, revision)
         return self.current()
 
-    def change_topic(self, topic_id: str) -> dict[str, Any]:
+    def change_topic(self, topic_id: str) -> dict[str, object]:
         state, now = self._practice_state()
         if state["phase"] != "paused":
             raise SessionError("change-topic requires a finalized practice question")
@@ -474,7 +489,7 @@ class SessionService:
         self.store.save(state, revision)
         return self.current()
 
-    def explain(self) -> dict[str, Any]:
+    def explain(self) -> dict[str, object]:
         state, now = self._practice_state()
         if state["phase"] != "paused":
             raise SessionError("explain requires a finalized practice question")
@@ -490,16 +505,16 @@ class SessionService:
             "phase": "paused",
         }
 
-    def finish(self) -> dict[str, Any]:
+    def finish(self) -> dict[str, object]:
         state, now = self._load_active()
         if state["status"] != "active":
             return self._status_projection(state, now)
         completed = self._complete(state, "user_finished", now)
         return self._status_projection(completed, now)
 
-    def report(self, session_id: str | None = None) -> dict[str, Any]:
+    def report(self, session_id: str | None = None) -> SessionReport:
         if self.store.state_path.exists():
             state, _ = self._load_active()
             if state["flow"] == "assessment" and state["status"] == "active" and (session_id is None or session_id == state["session_id"]):
                 raise SessionError("assessment report is withheld until the session is completed")
-        return self.store.completed(session_id)["report"]
+        return cast(SessionReport, self.store.completed(session_id)["report"])

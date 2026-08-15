@@ -6,6 +6,21 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from .contracts import (
+    AdaptationDecision,
+    Attempt,
+    CandidateIdentity,
+    Difficulty,
+    DifficultyState,
+    PracticeRecommendation,
+    Question,
+    QuestionBank,
+    SelectionDecision,
+    SessionReport,
+    SessionState,
+    TransitionEntry,
+)
+
 
 ASSESSMENT_BLUEPRINT = (
     "python_algorithms",
@@ -60,7 +75,7 @@ def digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def learner_priority(state: dict[str, Any], question: dict[str, Any]) -> tuple[int, float]:
+def learner_priority(state: SessionState, question: Question) -> tuple[int, float]:
     context = state.get("learner_context")
     if not context:
         return (1, 1.0)
@@ -72,7 +87,7 @@ def learner_priority(state: dict[str, Any], question: dict[str, Any]) -> tuple[i
     return (due, min(float(item["mastery"]) for item in matches))
 
 
-def candidate_identity(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def candidate_identity(records: Iterable[Question]) -> list[CandidateIdentity]:
     return [
         {
             "id": item["id"],
@@ -90,17 +105,17 @@ def seed_key(seed: str, slot: int, question_id: str) -> str:
     return hashlib.sha256(f"{seed}:{slot}:{question_id}".encode("utf-8")).hexdigest()
 
 
-def difficulty_distance(candidate: str, requested: str) -> int:
+def difficulty_distance(candidate: Difficulty, requested: Difficulty) -> int:
     return abs(DIFFICULTIES.index(candidate) - DIFFICULTIES.index(requested))
 
 
-def matches_slot(question: dict[str, Any], slot: str) -> bool:
+def matches_slot(question: Question, slot: str) -> bool:
     if slot == "debugging_case_reasoning":
         return question["primary_format"] in REASONING_FORMATS
     return question["primary_category"] == slot
 
 
-def select_assessment(state: dict[str, Any], records: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+def select_assessment(state: SessionState, records: QuestionBank) -> tuple[str, SelectionDecision]:
     slot_index = len(state["selected_question_ids"])
     target = ASSESSMENT_BLUEPRINT[slot_index % len(ASSESSMENT_BLUEPRINT)]
     remaining = [records[item] for item in state["eligible_candidate_ids"] if item not in state["selected_question_ids"]]
@@ -142,7 +157,7 @@ def select_assessment(state: dict[str, Any], records: dict[str, dict[str, Any]])
     selected = matching[0]
     if state.get("learner_context"):
         reasons.append("learner_state:due_and_low_mastery_tiebreak")
-    decision = {
+    decision: SelectionDecision = {
         "slot_index": slot_index,
         "target": target,
         "question_id": selected["id"],
@@ -155,12 +170,12 @@ def select_assessment(state: dict[str, Any], records: dict[str, dict[str, Any]])
 
 
 def select_practice(
-    state: dict[str, Any],
-    records: dict[str, dict[str, Any]],
+    state: SessionState,
+    records: QuestionBank,
     topic_id: str | None,
     primary_category: str | None = None,
     exclude_selected: bool = True,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, SelectionDecision]:
     candidates = list(records.values())
     reasons = []
     if topic_id:
@@ -214,7 +229,7 @@ def select_practice(
     }
 
 
-def transition(sequence: int, event: str, before: str, after: str, at: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
+def transition(sequence: int, event: str, before: str, after: str, at: str, details: dict[str, object] | None = None) -> TransitionEntry:
     return {
         "schema_version": 1,
         "sequence": sequence,
@@ -226,7 +241,7 @@ def transition(sequence: int, event: str, before: str, after: str, at: str, deta
     }
 
 
-def validate_final_assessment(value: dict[str, Any]) -> None:
+def validate_final_assessment(value: dict[str, object]) -> None:
     required = {"schema_version", "question_id", "score", "max_score", "criteria", "summary", "improvement", "deterministic_status"}
     if not required <= set(value) or value.get("schema_version") != 1:
         raise SessionError("assessment is not a finalized assessment object")
@@ -237,7 +252,7 @@ def validate_final_assessment(value: dict[str, Any]) -> None:
         raise SessionError("final assessment has an invalid deterministic status")
 
 
-def active_assessment_question(question: dict[str, Any]) -> dict[str, Any]:
+def active_assessment_question(question: Question) -> dict[str, object]:
     return {
         "id": question["id"],
         "title": question["title"],
@@ -250,8 +265,8 @@ def active_assessment_question(question: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def adapt_difficulty(difficulty: dict[str, Any], latest_score: int) -> tuple[dict[str, Any], dict[str, Any]]:
-    updated = {**difficulty, "evidence_since_change": [*difficulty["evidence_since_change"], latest_score]}
+def adapt_difficulty(difficulty: DifficultyState, latest_score: int) -> tuple[DifficultyState, AdaptationDecision]:
+    updated: DifficultyState = {**difficulty, "evidence_since_change": [*difficulty["evidence_since_change"], latest_score]}
     if updated["lock_remaining"]:
         updated["lock_remaining"] -= 1
         return updated, {"action": "hold", "reason": "post_change_cooldown"}
@@ -267,11 +282,11 @@ def adapt_difficulty(difficulty: dict[str, Any], latest_score: int) -> tuple[dic
     updated["evidence_since_change"] = []
     updated["lock_remaining"] = 2
     updated["last_direction"] = "up" if direction > 0 else "down"
-    decision = {"action": updated["last_direction"], "from": before, "to": updated["current"], "scores": evidence}
+    decision: AdaptationDecision = {"action": updated["last_direction"], "from": before, "to": updated["current"], "scores": evidence}
     return updated, decision
 
 
-def practice_recommendation(attempt: dict[str, Any]) -> dict[str, Any]:
+def practice_recommendation(attempt: Attempt) -> PracticeRecommendation:
     score = attempt["score"]
     if score <= 4:
         return {"action": "retry", "reason": "score indicates the same question needs another attempt"}
@@ -281,7 +296,7 @@ def practice_recommendation(attempt: dict[str, Any]) -> dict[str, Any]:
     return {"action": "next", "category": attempt["primary_category"], "difficulty": DIFFICULTIES[target_index], "reason": "extend demonstrated competency with a harder nearby question"}
 
 
-def timing(state: dict[str, Any], ended_at: str) -> dict[str, Any]:
+def timing(state: SessionState, ended_at: str) -> dict[str, object]:
     started = parse_utc(state["started_at"])
     ended = parse_utc(ended_at)
     elapsed = max(0, int((ended - started).total_seconds()))
@@ -295,7 +310,7 @@ def timing(state: dict[str, Any], ended_at: str) -> dict[str, Any]:
     }
 
 
-def build_report(state: dict[str, Any]) -> dict[str, Any]:
+def build_report(state: SessionState) -> SessionReport:
     attempts = state["attempts"]
     by_category: dict[str, list[int]] = defaultdict(list)
     for attempt in attempts:

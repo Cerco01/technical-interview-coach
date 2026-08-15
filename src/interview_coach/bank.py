@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from .contracts import Question, QuestionBank
 from .resources import data_root
 
 
@@ -18,15 +19,15 @@ def read_json(path: Path) -> Any:
         raise BankError(f"{path}: {exc}") from exc
 
 
-def questions(root: Path | None = None) -> dict[str, dict[str, Any]]:
+def questions(root: Path | None = None) -> QuestionBank:
     root = root or data_root()
-    result: dict[str, dict[str, Any]] = {}
+    result: QuestionBank = {}
     for path in sorted((root / "questions" if root.name == "interview_coach_data" else root / "data/questions").glob("*.jsonl")):
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
             try:
-                record = json.loads(line)
+                record: Question = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise BankError(f"{path}:{line_number}: {exc}") from exc
             question_id = record.get("id")
@@ -36,14 +37,14 @@ def questions(root: Path | None = None) -> dict[str, dict[str, Any]]:
     return result
 
 
-def get_question(question_id: str) -> dict[str, Any]:
+def get_question(question_id: str) -> Question:
     try:
         return questions()[question_id]
     except KeyError as exc:
         raise BankError(f"unknown question id: {question_id}") from exc
 
 
-def learner_safe(question: dict[str, Any]) -> dict[str, Any]:
+def learner_safe(question: Question) -> dict[str, object]:
     evaluation = question["evaluation"]
     return {
         "id": question["id"],
@@ -60,5 +61,5 @@ def learner_safe(question: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def sorted_questions(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def sorted_questions(records: Iterable[Question]) -> list[Question]:
     return sorted(records, key=lambda item: item["priority_rank"])

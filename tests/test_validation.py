@@ -18,10 +18,11 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from interview_coach.bank import get_question, questions
-from interview_coach.cli import create_scaffold, flat_scaffold_filename, main, scaffold_text
+from interview_coach.cli import main
 from interview_coach.evaluation import EvaluationError, evidence_for
 from interview_coach.review import ReviewError, finalize, prepare
 from interview_coach.validation import ValidationError, validate, validate_privacy
+from interview_coach.workspace import create_scaffold, flat_scaffold_filename, scaffold_text
 
 
 class CoachBehaviorTests(unittest.TestCase):

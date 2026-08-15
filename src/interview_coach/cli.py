@@ -18,6 +18,12 @@ EXIT_VALIDATION = 3
 EXIT_FAILED = 4
 EXIT_RUNTIME = 5
 
+FLAT_SUFFIXES = {
+    "python_module": ".py",
+    "sql_query": ".sql",
+    "answer_text": ".md",
+}
+
 
 def emit(value: Any, output: Path | None = None) -> None:
     text = json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
@@ -37,9 +43,22 @@ def parser() -> argparse.ArgumentParser:
     show = sub.add_parser("show", help="show one learner-safe prompt and submission contract")
     show.add_argument("question_id")
     show.add_argument("--format", choices=("json", "text"), default="text")
-    scaffold = sub.add_parser("scaffold", help="create a learner-safe submission scaffold")
+    scaffold = sub.add_parser(
+        "scaffold",
+        help="create or reopen a learner-safe submission scaffold",
+        epilog=(
+            "Practice: interview-coach scaffold q-python-003 --output workspace --flat --open. "
+            "Assessment: add --assessment and use a fresh file; existing non-empty assessment files are refused."
+        ),
+    )
     scaffold.add_argument("question_id")
     scaffold.add_argument("--output", type=Path, required=True)
+    scaffold.add_argument("--flat", action="store_true", help="use <question-id>.<type> directly inside the output directory")
+    scaffold.add_argument(
+        "--assessment",
+        action="store_true",
+        help="with --flat, use an isolated assessment-<question-id>.<type> file and refuse prior non-empty answers",
+    )
     scaffold.add_argument("--open", action="store_true", help="open the scaffold in the current VS Code window")
     evaluate = sub.add_parser("evaluate", help="run deterministic checks and write objective evidence")
     evaluate.add_argument("question_id")
@@ -112,8 +131,28 @@ def scaffold_text(question: dict[str, Any]) -> str:
     return f"# Answer for {question['id']}\n\nWrite your reasoning here. Tell the coach \"I am finished\" when your answer is ready.\n"
 
 
-def create_scaffold(question: dict[str, Any], output: Path) -> Path:
-    filename = question["evaluation"]["submission_contract"]["filename"]
+def flat_scaffold_filename(question: dict[str, Any], assessment: bool = False) -> str:
+    question_id = question.get("id")
+    if not isinstance(question_id, str) or not question_id.startswith("q-") or any(
+        not part or not part.isascii() or not part.isalnum() or part.lower() != part
+        for part in question_id.split("-")
+    ):
+        raise EvaluationError(f"unsafe question ID for flat scaffold: {question_id}")
+    kind = question["evaluation"]["submission_contract"].get("kind")
+    try:
+        suffix = FLAT_SUFFIXES[kind]
+    except (KeyError, TypeError):
+        raise EvaluationError(f"unsupported submission contract for flat scaffold: {kind}") from None
+    prefix = "assessment-" if assessment else ""
+    return f"{prefix}{question_id}{suffix}"
+
+
+def create_scaffold(question: dict[str, Any], output: Path, *, flat: bool = False, assessment: bool = False) -> Path:
+    if assessment and not flat:
+        raise EvaluationError("--assessment requires --flat")
+    if ".." in output.parts:
+        raise EvaluationError(f"scaffold output cannot contain path traversal: {output}")
+    filename = flat_scaffold_filename(question, assessment) if flat else question["evaluation"]["submission_contract"]["filename"]
     relative = Path(filename)
     if relative.is_absolute() or relative.name != filename:
         raise EvaluationError(f"unsafe scaffold filename: {filename}")
@@ -121,8 +160,17 @@ def create_scaffold(question: dict[str, Any], output: Path) -> Path:
         raise EvaluationError(f"scaffold output must be a directory: {output}")
     output.mkdir(parents=True, exist_ok=True)
     destination = output / relative
+    if flat:
+        stem = filename.removesuffix(relative.suffix)
+        collisions = [path for path in output.glob(f"{stem}.*") if path != destination]
+        if collisions:
+            raise EvaluationError(f"wrong-type scaffold collision: {collisions[0]}")
     if destination.is_symlink() or (destination.exists() and not destination.is_file()):
         raise EvaluationError(f"unsafe scaffold collision: {destination}")
+    if assessment and destination.exists() and destination.stat().st_size:
+        raise EvaluationError(
+            f"assessment scaffold already contains an answer: {destination}; use a fresh assessment workspace or remove it explicitly"
+        )
     if not destination.exists() or destination.stat().st_size == 0:
         destination.write_text(scaffold_text(question), encoding="utf-8")
     return destination.resolve()
@@ -192,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{safe['id']}: {safe['title']}\n\n{safe['prompt']}\n\nSubmission: {safe['submission_contract']['filename']} ({safe['evaluation_strategy']})")
             return 0
         if args.command == "scaffold":
-            destination = create_scaffold(question, args.output)
+            destination = create_scaffold(question, args.output, flat=args.flat, assessment=args.assessment)
             print(destination, flush=True)
             if args.open:
                 open_in_vscode(destination)

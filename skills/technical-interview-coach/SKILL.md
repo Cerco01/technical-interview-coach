@@ -21,6 +21,8 @@ Load this skill when the user wants to practice, study, review, resume, or evalu
 - Treat `flow` and `mode` separately. Practice never advances after record without an explicit learner action; assessment always advances after an accepted record and never leaks feedback while active.
 - In active assessment, never reveal hints, correctness, scores, detailed feedback, rubric content, expected concepts, or solutions. Release the report only after completion.
 - Create only the current question's scaffold. Do not precreate future question files or describe answer completion as a Git commit.
+- Keep practice feedback in chat. Never write feedback into learner code or add code comments unless the learner explicitly requests comments in the file.
+- Never reset scaffold after failure. Practice retry reopens the same non-empty flat question file without recreating, truncating, or copying it.
 
 ## Decision Gates
 
@@ -36,13 +38,14 @@ Load this skill when the user wants to practice, study, review, resume, or evalu
 2. Confirm mode, topic, difficulty, and duration when unspecified; ask only the minimum necessary question.
 3. Start or resume through `interview-coach session`. Do not invent state when the active file or completed history is absent.
 4. Filter practice by available topic, requested difficulty, and prerequisites. Assessment selection is package-owned and MUST follow its persisted blueprint and seed rather than prompt judgment.
-5. After every new current question from practice start, `next`, `change-topic`, or relevant `retry`, and after assessment auto-advance, run `interview-coach scaffold <question-id> --output submissions/<session-id>/<question-id> --open`. Create only that question-specific file in the ignored, session-specific directory. Reuse the exact path printed by the CLI.
+5. After every new current question from practice start, `next`, or `change-topic`, run `interview-coach scaffold <question-id> --output workspace --flat --open`. A relevant `retry` runs the same command and MUST reopen the exact same flat question file with its non-empty bytes preserved. A new question opens its sibling file in `workspace/`. Reuse the exact path printed by the CLI; never put a session ID in a learner-facing directory name.
 6. Tell the learner the exact file to edit, then wait for "I am finished" or an equivalent explicit answer completion. This is not a Git commit. Do not evaluate, prepare review, or advance while waiting.
 7. For executable questions, use `interview-coach evaluate` only after answer completion. Use `prepare-review` to load the rubric and objective evidence, then return criterion-level scores suitable for `finalize`. For `answer.md` contracts, skip deterministic evaluation and use `prepare-review` directly.
 8. If editor opening warns or the client cannot launch VS Code, relay the printed path and manual `code -r <exact-file>` command. Do not fail the interview because editor opening failed.
-9. Do not open a file for a genuinely conversational-only contract unless `scaffold` supports it with an `answer.md` contract.
-10. Record the finalized assessment with both current session and question IDs. In practice, show feedback and wait. In assessment, present only the automatically selected next learner-safe prompt, scaffold it, and wait again.
-11. Finish explicitly or allow package-enforced limit/timeout completion, then use `session report`.
+9. Do not open a file for a genuinely conversational-only contract unless `scaffold` supports it with an `answer_text` Markdown contract.
+10. Assessment uses `interview-coach scaffold <question-id> --output workspace --flat --assessment --open` only after package-owned selection. This opens `workspace/assessment-<question-id>.<ext>`, never the practice file. If that assessment file is non-empty, stop and require a fresh assessment workspace or explicit learner cleanup; never reveal, reuse, or reset it silently.
+11. Record the finalized assessment with both current session and question IDs. In practice, return feedback in chat and wait without changing learner code. After assessment auto-advance, present only the automatically selected next learner-safe prompt, scaffold its isolated assessment file, and wait again.
+12. Finish explicitly or allow package-enforced limit/timeout completion, then use `session report`.
 
 ## Output Contract
 

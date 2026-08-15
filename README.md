@@ -8,7 +8,7 @@ Technical Interview Coach pairs an LLM-led interview with local, deterministic c
 ![Apache 2.0 license](https://img.shields.io/badge/License-Apache--2.0-2F855A)
 ![Question bank: 50](https://img.shields.io/badge/Questions-50-6B46C1)
 ![Deterministic evaluators: 22](https://img.shields.io/badge/Deterministic_evaluators-22-0F766E)
-![Test cases: 34](https://img.shields.io/badge/Tests-34-4B5563)
+![Test cases: 41](https://img.shields.io/badge/Tests-41-4B5563)
 
 | Coaching that adapts | Work that stays real |
 | --- | --- |
@@ -78,7 +78,7 @@ interview-coach session start --flow practice --mode study --seed first-practice
 interview-coach session current
 ```
 
-The LLM creates only the current question's file in a session-specific and question-specific ignored directory, asks VS Code to open it, and tells you the exact path. Say "I am finished" when the answer is ready. This is not a Git commit. After the LLM and CLI finalize and record that answer, practice remains paused until you choose the next action:
+The LLM creates only the current question's flat file, such as `workspace/q-python-003.py`, asks VS Code to open it, and tells you the exact path. Retry reopens that same file without resetting it; `next` and `change-topic` create sibling files. Feedback stays in chat unless you explicitly request code comments. Say "I am finished" when the answer is ready. This is not a Git commit. After the LLM and CLI finalize and record that answer, practice remains paused until you choose the next action:
 
 ```bash
 interview-coach session next
@@ -94,7 +94,7 @@ interview-coach session start --flow assessment --seed mock-interview-1
 interview-coach session current
 ```
 
-The CLI advances after each finalized answer is recorded. When the assessment reaches its question limit, times out, or you run `interview-coach session finish`, release the latest completed report with:
+After each package-selected question, assessment uses a separate flat file such as `workspace/assessment-q-python-003.py`; it never opens an existing practice answer. A non-empty prior assessment file is refused rather than silently reused or reset, so start with a fresh assessment workspace or explicitly clean that file before the run. The CLI advances after each finalized answer is recorded. When the assessment reaches its question limit, times out, or you run `interview-coach session finish`, release the latest completed report with:
 
 ```bash
 interview-coach session report
@@ -119,13 +119,16 @@ For a one-off implementation question, the local part of the workflow is:
 ```bash
 interview-coach show q-python-003
 interview-coach scaffold q-python-003 \
-  --output submissions/session-example/q-python-003 \
+  --output workspace \
+  --flat \
   --open
-interview-coach evaluate q-python-003 submissions/session-example/q-python-003 \
+interview-coach evaluate q-python-003 workspace/q-python-003.py \
   --output evidence/q-python-003.json
 ```
 
-The scaffold command prints the exact path even when editor opening fails. `code -r` reuses the current VS Code window; if `code` is unavailable, run VS Code's **Shell Command: Install 'code' command in PATH** or open the printed file manually. Other LLM clients use the same path without requiring editor control. Do not precreate future question files.
+Flat scaffolds map Python/module contracts to `.py`, SQL to `.sql`, and Markdown/conversational answers to `.md`. The scaffold command prints the exact path even when editor opening fails. `code -r` reuses the current VS Code window; if `code` is unavailable, run VS Code's **Shell Command: Install 'code' command in PATH** or open the printed file manually. Other LLM clients use the same path without requiring editor control. Do not precreate future question files, reset scaffold after failure, or write feedback into learner code without explicit consent.
+
+Legacy directory mode remains available when `--flat` is omitted. For an old unambiguous answer, manually move its single file from `submissions/<old-session>/<question-id>/` to the matching `workspace/<question-id>.<ext>` path. No automatic legacy scan or copy is performed, preventing ambiguous or destructive migration.
 
 The LLM waits for "I am finished," then uses `prepare-review` and returns criterion-level scores for `finalize`. This answer completion is not a Git commit. See [Coaching Workflows](docs/workflows.md#hybrid-evaluation) for that boundary and [Canonical Data Model](docs/data-model.md) for the generated evidence and report contracts.
 
@@ -181,6 +184,6 @@ Learner answers, evidence, active state, and completed sessions belong in ignore
 
 ## Status and License
 
-The current source package version is **0.2.0**. It is installable from this repository, declares Python 3.11+ compatibility, includes 50 questions and 22 deterministic evaluators, and contains 34 test cases.
+The current source package version is **0.2.0**. It is installable from this repository, declares Python 3.11+ compatibility, includes 50 questions and 22 deterministic evaluators, and contains 41 test cases.
 
 Licensed under the [Apache License 2.0](LICENSE). Maintained by the Technical Interview Coach contributors; contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).

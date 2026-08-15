@@ -11,15 +11,22 @@ Choose a session flow and pedagogical mode before selecting a question. The flow
 
 Practice actions are `next`, `retry`, `explain`, `change-topic`, and `finish`. Recording a practice answer MUST leave the session paused. `explain` records an LLM-handled post-answer action and MUST NOT advance.
 
-For every newly current question, create only its submission file in `submissions/<session-id>/<question-id>/`. Practice start, `next`, `change-topic`, and a relevant `retry` trigger this lifecycle; assessment record auto-advance does the same. These are ignored, session-specific and question-specific learner files. Do not precreate later questions.
+For every newly current practice question, create one sibling file in the ignored `workspace/` directory. Practice start, `next`, and `change-topic` create or reopen the selected question's flat file. A relevant `retry` reopens the same flat file and preserves its non-empty bytes. Do not precreate later questions, nest question directories, or expose session IDs in learner-facing paths.
 
 ```bash
 interview-coach scaffold <question-id> \
-  --output submissions/<session-id>/<question-id> \
+  --output workspace \
+  --flat \
   --open
 ```
 
-The command always prints the exact file path. A missing file or an existing empty file receives the learner-safe template; an existing non-empty file is returned unchanged. Directory, symlink, and unsafe filename collisions fail without modifying learner work. `--open` runs `code -r <exact-file>` so a VS Code integrated terminal reuses the current window. If the editor command is missing or fails, scaffold creation still succeeds: relay the printed path, open it manually, or run VS Code's **Shell Command: Install 'code' command in PATH**. Other clients remain fully functional because the path is standard output.
+The command maps `python_module` to `<question-id>.py`, `sql_query` to `<question-id>.sql`, and `answer_text` to `<question-id>.md`. Unsupported contract kinds fail explicitly. It always prints the exact file path. A missing file or an existing empty file receives the learner-safe template; an existing non-empty practice file is returned unchanged. Wrong-extension siblings, directories, symlinks, traversal, unsafe IDs, and file collisions fail without modifying learner work. `--open` runs `code -r <exact-file>` so a VS Code integrated terminal reuses the current window. If the editor command is missing or fails, scaffold creation still succeeds: relay the printed path, open it manually, or run VS Code's **Shell Command: Install 'code' command in PATH**.
+
+Never reset scaffold after failure. Feedback stays in chat and MUST NOT write feedback into learner code. Optional code comments may be added only after an explicit learner request. `next` and `change-topic` open the newly selected sibling file; `retry` does not recreate, copy, or move the prior answer.
+
+### Assessment Workspace Integrity
+
+After assessment selection, create the current isolated file with `interview-coach scaffold <question-id> --output workspace --flat --assessment --open`. Assessment filenames use `assessment-<question-id>.<ext>`, so an existing practice answer such as `q-python-003.py` is never opened or exposed. A missing or empty assessment file receives a clean solution-free template. A non-empty assessment file is refused: use a fresh flat assessment workspace or explicitly remove the stale file outside the active assessment. The CLI never resets or silently reuses prior assessment bytes.
 
 Assessment uses interview mode, begins at intermediate difficulty, and accepts 5-30 questions and 15-180 minutes. Twelve questions at 75 minutes is the standard configuration and generally takes approximately 60-75 minutes depending on response speed.
 
@@ -110,7 +117,7 @@ Never store secrets, full chat transcripts, or unrelated personal information. P
 The answer-completion boundary applies to CLI use as well as conversation:
 
 1. `list`, `show`, and `scaffold` may expose only learner-safe metadata, prompts, and public submission contracts.
-2. Create or reuse only the current question's scaffold. Never truncate a non-empty learner submission and never precreate future answers.
+2. Create or reuse only the current question's same flat scaffold. Never truncate a non-empty practice submission, reset scaffold after failure, or precreate future answers.
 3. Wait for the learner's explicit "I am finished" before `evaluate` or `prepare-review`; answer completion is not a Git commit.
 4. `evaluate` runs declared local checks and writes stable evidence. It never assigns subjective rubric points.
 5. `prepare-review` is post-answer and may expose the rubric, answer, and deterministic evidence to the LLM.
@@ -118,3 +125,7 @@ The answer-completion boundary applies to CLI use as well as conversation:
 7. `finalize` rejects scores above rubric maxima and nonzero scores blocked by failed objective checks, then computes the 0-10 total.
 
 Passing local checks is necessary for full credit on covered criteria but is not sufficient. Rubric-only questions skip step 4 rather than using fake keyword or exact-answer automation.
+
+## Legacy Submission Migration
+
+Directory mode remains compatible: omitting `--flat` still creates the contract filename (`solution.py`, `answer.sql`, or `answer.md`) under the exact `--output` directory. New coaching flows must use flat mode. To retain an old answer, manually move the one unambiguous file from `submissions/<old-session>/<question-id>/` to `workspace/<question-id>.<ext>` while no active assessment is running. The CLI does not scan legacy trees or copy ambiguous answers, so migration cannot overwrite newer learner work.

@@ -17,8 +17,12 @@ Local UTF-8 files are the source of truth. JSON is used for bounded documents, J
 | Released report | Embedded in completed session | `schemas/report.schema.json` |
 | Legacy practice session | One JSON object per line in `sessions/*.jsonl` | `schemas/session.schema.json` version 1 compatibility |
 | Learner progress | `state/learner.json` | `schemas/progress.schema.json` |
+| Practice answer workspace | `workspace/<question-id>.<ext>` | Public submission contract kind |
+| Active assessment answer | `workspace/assessment-<question-id>.<ext>` | Fresh, isolated public submission contract kind |
 
 Examples under `examples/` are committed fixtures, not live learner data.
+
+`workspace/` is ignored local learner content. Python modules use `.py`, SQL queries use `.sql`, and conversational `answer_text` contracts use `.md`; unsupported kinds fail rather than guessing. Practice retry resolves to the same question path and preserves non-empty bytes. Assessment never opens the corresponding practice path and refuses a non-empty prior assessment file, requiring a fresh workspace or explicit cleanup. Session IDs remain internal record identities and never become learner-facing workspace directory names.
 
 ## Identity And Time
 

@@ -18,7 +18,7 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from interview_coach.bank import get_question, questions
-from interview_coach.cli import create_scaffold, main, scaffold_text
+from interview_coach.cli import create_scaffold, flat_scaffold_filename, main, scaffold_text
 from interview_coach.evaluation import EvaluationError, evidence_for
 from interview_coach.review import ReviewError, finalize, prepare
 from interview_coach.validation import ValidationError, validate, validate_privacy
@@ -70,6 +70,87 @@ class CoachBehaviorTests(unittest.TestCase):
             self.assertEqual(0, third.returncode, third.stderr)
             self.assertEqual("learner work\n", path.read_text(encoding="utf-8"))
 
+    def test_flat_scaffold_maps_contracts_to_sibling_question_files(self):
+        cases = {
+            "q-python-003": "q-python-003.py",
+            "q-sql-002": "q-sql-002.sql",
+            "q-ml-004": "q-ml-004.md",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for question_id, filename in cases.items():
+                with self.subTest(question_id=question_id):
+                    result = self.cli("scaffold", question_id, "--output", directory, "--flat")
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertEqual((root / filename).resolve(), Path(result.stdout.strip()))
+            self.assertEqual(set(cases.values()), {path.name for path in root.iterdir()})
+            self.assertTrue(all(path.is_file() for path in root.iterdir()))
+
+    def test_flat_retry_reopens_exact_path_and_preserves_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.cli("scaffold", "q-python-003", "--output", directory, "--flat")
+            path = Path(first.stdout.strip())
+            learner_bytes = b"def count_words(words):\n    return {'kept': 1}\n"
+            path.write_bytes(learner_bytes)
+            retry = self.cli("scaffold", "q-python-003", "--output", directory, "--flat")
+            self.assertEqual(0, retry.returncode, retry.stderr)
+            self.assertEqual(first.stdout, retry.stdout)
+            self.assertEqual(learner_bytes, path.read_bytes())
+            self.assertEqual([path], [item.resolve() for item in Path(directory).iterdir()])
+
+    def test_flat_empty_file_gets_template_and_nonempty_file_is_preserved(self):
+        question = get_question("q-sql-002")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "q-sql-002.sql"
+            path.touch()
+            self.assertEqual(path.resolve(), create_scaffold(question, Path(directory), flat=True))
+            self.assertIn("SELECT or WITH", path.read_text(encoding="utf-8"))
+            path.write_bytes(b"SELECT 1;\n")
+            create_scaffold(question, Path(directory), flat=True)
+            self.assertEqual(b"SELECT 1;\n", path.read_bytes())
+
+    def test_flat_scaffold_rejects_unsafe_ids_paths_symlinks_and_type_collisions(self):
+        question = get_question("q-python-003")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrong_type = root / "q-python-003.sql"
+            wrong_type.touch()
+            with self.assertRaises(EvaluationError):
+                create_scaffold(question, root, flat=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            destination = root / "q-python-003.py"
+            target = root / "target.py"
+            target.touch()
+            destination.symlink_to(target)
+            with self.assertRaises(EvaluationError):
+                create_scaffold(question, root, flat=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "q-python-003.py").mkdir()
+            with self.assertRaises(EvaluationError):
+                create_scaffold(question, root, flat=True)
+        unsafe = json.loads(json.dumps(question))
+        unsafe["id"] = "../q-python-003"
+        with self.assertRaises(EvaluationError):
+            flat_scaffold_filename(unsafe)
+        with self.assertRaises(EvaluationError):
+            create_scaffold(question, Path("workspace/../escape"), flat=True)
+
+    def test_assessment_scaffold_isolated_from_practice_and_refuses_prior_answer(self):
+        question = get_question("q-python-003")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            practice = root / "q-python-003.py"
+            practice.write_bytes(b"private practice answer\n")
+            assessment = create_scaffold(question, root, flat=True, assessment=True)
+            self.assertEqual((root / "assessment-q-python-003.py").resolve(), assessment)
+            self.assertNotIn("private practice answer", assessment.read_text(encoding="utf-8"))
+            self.assertEqual(b"private practice answer\n", practice.read_bytes())
+            assessment.write_bytes(b"active assessment answer\n")
+            with self.assertRaisesRegex(EvaluationError, "fresh assessment workspace"):
+                create_scaffold(question, root, flat=True, assessment=True)
+
     def test_scaffold_populates_empty_file_and_rejects_unsafe_collisions(self):
         question = get_question("q-python-003")
         with tempfile.TemporaryDirectory() as directory:
@@ -105,6 +186,17 @@ class CoachBehaviorTests(unittest.TestCase):
             self.assertEqual(f"{path}\n", stdout.getvalue())
             run.assert_called_once_with(["code", "-r", str(path)], capture_output=True, text=True, check=False, shell=False)
 
+    def test_flat_scaffold_open_uses_exact_vscode_argument_array(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stdout = StringIO()
+            with mock.patch("interview_coach.cli.subprocess.run") as run, redirect_stdout(stdout):
+                run.return_value = subprocess.CompletedProcess([], 0, "", "")
+                result = main(["scaffold", "q-sql-002", "--output", directory, "--flat", "--open"])
+            path = (Path(directory) / "q-sql-002.sql").resolve()
+            self.assertEqual(0, result)
+            self.assertEqual(f"{path}\n", stdout.getvalue())
+            run.assert_called_once_with(["code", "-r", str(path)], capture_output=True, text=True, check=False, shell=False)
+
     def test_scaffold_editor_failures_are_non_fatal_and_actionable(self):
         failures = (
             FileNotFoundError("code not found"),
@@ -115,8 +207,8 @@ class CoachBehaviorTests(unittest.TestCase):
                 stdout, stderr = StringIO(), StringIO()
                 behavior = {"side_effect": failure} if isinstance(failure, OSError) else {"return_value": failure}
                 with mock.patch("interview_coach.cli.subprocess.run", **behavior), redirect_stdout(stdout), redirect_stderr(stderr):
-                    result = main(["scaffold", "q-python-003", "--output", directory, "--open"])
-                path = (Path(directory) / "solution.py").resolve()
+                    result = main(["scaffold", "q-python-003", "--output", directory, "--flat", "--open"])
+                path = (Path(directory) / "q-python-003.py").resolve()
                 self.assertEqual(0, result)
                 self.assertEqual(f"{path}\n", stdout.getvalue())
                 self.assertTrue(path.is_file())
@@ -149,10 +241,13 @@ class CoachBehaviorTests(unittest.TestCase):
         workflow = (ROOT / "docs/workflows.md").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         combined = "\n".join((skill, workflow, readme)).lower()
-        for required in ("--open", "session-specific", "question-specific", "i am finished", "not a git commit", "do not precreate"):
+        for required in ("--flat", "workspace/", "same flat", "i am finished", "not a git commit", "do not precreate"):
             self.assertIn(required, combined)
         self.assertIn("practice start", skill.lower())
         self.assertIn("assessment auto-advance", skill.lower())
+        for prohibited in ("reset scaffold after failure", "write feedback into learner code"):
+            self.assertIn(prohibited, combined)
+        self.assertNotIn("submissions/<session-id>/<question-id>", combined)
 
     def test_python_evaluation_pass_fail_error_and_timeout(self):
         with tempfile.TemporaryDirectory() as directory:
